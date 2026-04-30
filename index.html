@@ -963,7 +963,7 @@ function userLogin() {
     const pwd = document.getElementById('loginPwd').value.trim();
     const tip = document.getElementById('loginTip');
     
-    if (acc === 'admin' && pwd === '123456') {
+    if (acc === 'admin' && pwd === 'zengzhihua0898') {
         globalData.role = 'teacher';
         globalData.userInfo = { name: '教师' };
         hideAllPages();
@@ -985,7 +985,7 @@ function userLogin() {
         return;
     }
     
-    tip.innerText = '账号或密码错误！教师账号：admin/123456，学生账号：zhangsan/123456 或 lisi/123456';
+    tip.innerText = '账号或密码错误！';
 }
 
 function userLogout() {
