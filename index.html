@@ -337,7 +337,6 @@
         <div id="loginTip" style="color:#e53e3e; margin:10px 0;"></div>
         <button class="btn btn-primary" style="width:100%" onclick="userLogin()">登录系统</button>
         <div style="margin-top: 15px; background:#edf2f7; padding: 12px; border-radius: 10px; font-size:13px;">
-            <br>
             
         </div>
     </div>
@@ -362,15 +361,7 @@
         <div id="teacherRecordsPanel" class="hide">
             <div style="overflow-x: auto;">
                 <table id="teacherSubmitTable">
-                    <thead>
-                        <tr>
-                            <th>学生姓名</th>
-                            <th>题目名称</th>
-                            <th>得分</th>
-                            <th>提交时间</th>
-                            <th>操作</th>
-                        </tr>
-                    </thead>
+                    <thead><tr><th>学生姓名</th><th>题目名称</th><th>得分</th><th>提交时间</th><th>操作</th></tr></thead>
                     <tbody></tbody>
                 </table>
             </div>
@@ -391,36 +382,21 @@
             <button class="btn btn-danger" onclick="userLogout()">退出</button>
         </div>
         
-        <!-- 学生管理面板 -->
         <div id="adminStudentPanel">
             <button class="btn btn-success" onclick="openAddStudentModal()">➕ 添加学生</button>
             <div style="overflow-x: auto; margin-top: 15px;">
                 <table id="adminStudentTable">
-                    <thead>
-                        <tr>
-                            <th>姓名</th>
-                            <th>账号</th>
-                            <th>密码</th>
-                            <th>操作</th>
-                        </tr>
-                    </thead>
+                    <thead><tr><th>姓名</th><th>账号</th><th>密码</th><th>操作</th></tr></thead>
                     <tbody></tbody>
                 </table>
             </div>
         </div>
         
-        <!-- 题目管理面板 -->
         <div id="adminProblemPanel" class="hide">
             <button class="btn btn-success" onclick="openAddProblemModal()">➕ 新建题目</button>
             <div style="overflow-x: auto; margin-top: 15px;">
                 <table id="adminProblemTable">
-                    <thead>
-                        <tr>
-                            <th>题目名称</th>
-                            <th>总分</th>
-                            <th>操作</th>
-                        </tr>
-                    </thead>
+                    <thead><tr><th>题目名称</th><th>总分</th><th>操作</th></tr></thead>
                     <tbody></tbody>
                 </table>
             </div>
@@ -477,7 +453,7 @@
     </div>
 </div>
 
-<!-- 添加学生模态框 -->
+<!-- 模态框 -->
 <div id="addStudentModal" class="hide modal-mask">
     <div class="card" style="width: 450px;">
         <h4>➕ 添加学生</h4>
@@ -491,7 +467,6 @@
     </div>
 </div>
 
-<!-- 编辑学生模态框 -->
 <div id="editStudentModal" class="hide modal-mask">
     <div class="card" style="width: 450px;">
         <h4>✏️ 编辑学生信息</h4>
@@ -506,7 +481,6 @@
     </div>
 </div>
 
-<!-- 添加题目模态框 -->
 <div id="addProblemModal" class="hide modal-mask">
     <div class="card" style="width: 700px; max-height: 80vh; overflow-y: auto;">
         <h4>📌 新建题目</h4>
@@ -555,58 +529,71 @@ let globalData = {
     currentProblem: null
 };
 
-// 初始化数据
+// 初始化数据 - 优先加载localStorage，如果没有则创建默认数据
 function initData() {
-    const saved = localStorage.getItem('cpp_system_data');
+    // 尝试从localStorage加载数据
+    const saved = localStorage.getItem('cpp_system_data_v2');
+    
     if (saved) {
         try {
             const data = JSON.parse(saved);
             globalData.problemList = data.problemList || [];
             globalData.studentList = data.studentList || [];
             globalData.submitRecords = data.submitRecords || [];
-        } catch(e) { console.error(e); }
+            console.log('数据从 localStorage 加载成功');
+        } catch(e) { 
+            console.error('加载数据失败', e);
+            createDefaultData();
+        }
+    } else {
+        // 第一次使用，创建默认数据
+        createDefaultData();
+        saveData();
+        console.log('首次使用，创建默认数据');
     }
+}
+
+// 创建默认数据
+function createDefaultData() {
+    globalData.problemList = [
+        { id: 1, title: "两数之和", desc: "输入两个整数 a 和 b，输出它们的和。", 
+          testPoint: [{ input: "1 2", output: "3", score: 50 }, { input: "5 7", output: "12", score: 50 }] },
+        { id: 2, title: "最长连续9", desc: "输入n个数字，求最长连续9的个数", 
+          testPoint: [{ input: "6\n1 9 9 3 9 9", output: "2", score: 33 }, 
+                     { input: "5\n9 9 9 9 9", output: "5", score: 33 },
+                     { input: "6\n9 9 3 9 9 9", output: "3", score: 34 }] },
+        { id: 3, title: "三数相加", desc: "声明 int a=1, b=2, c=3，输出 a+b+c 的结果", 
+          testPoint: [{ input: "", output: "6", score: 100 }] }
+    ];
     
-    if (globalData.problemList.length === 0) {
-        globalData.problemList = [
-            { id: 1, title: "两数之和", desc: "输入两个整数 a 和 b，输出它们的和。", 
-              testPoint: [{ input: "1 2", output: "3", score: 50 }, { input: "5 7", output: "12", score: 50 }] },
-            { id: 2, title: "最长连续9", desc: "输入n个数字，求最长连续9的个数", 
-              testPoint: [{ input: "6\n1 9 9 3 9 9", output: "2", score: 33 }, 
-                         { input: "5\n9 9 9 9 9", output: "5", score: 33 },
-                         { input: "6\n9 9 3 9 9 9", output: "3", score: 34 }] },
-            { id: 3, title: "三数相加", desc: "声明 int a=1, b=2, c=3，输出 a+b+c 的结果", 
-              testPoint: [{ input: "", output: "6", score: 100 }] }
-        ];
-    }
+    globalData.studentList = [
+        { name: "张三", acc: "zhangsan", pwd: "123456" },
+        { name: "李四", acc: "lisi", pwd: "123456" }
+    ];
     
-    if (globalData.studentList.length === 0) {
-        globalData.studentList = [
-            { name: "张三", acc: "zhangsan", pwd: "123456" },
-            { name: "李四", acc: "lisi", pwd: "123456" }
-        ];
-    }
-    
-    saveData();
+    globalData.submitRecords = [];
 }
 
 function saveData() {
-    localStorage.setItem('cpp_system_data', JSON.stringify({
+    const dataToSave = {
         problemList: globalData.problemList,
         studentList: globalData.studentList,
         submitRecords: globalData.submitRecords
-    }));
+    };
+    localStorage.setItem('cpp_system_data_v2', JSON.stringify(dataToSave));
+    console.log('数据已保存到 localStorage');
 }
 
 // 刷新数据（从localStorage重新加载）
 function refreshData() {
-    const saved = localStorage.getItem('cpp_system_data');
+    const saved = localStorage.getItem('cpp_system_data_v2');
     if (saved) {
         try {
             const data = JSON.parse(saved);
             globalData.problemList = data.problemList || [];
             globalData.studentList = data.studentList || [];
             globalData.submitRecords = data.submitRecords || [];
+            console.log('数据刷新成功');
         } catch(e) {}
     }
     saveData();
@@ -622,7 +609,7 @@ function refreshStudentProblems() {
     setTimeout(() => btn.classList.remove('refresh-btn'), 500);
 }
 
-// ==================== C++模拟执行器 ====================
+// ==================== C++模拟执行器（简化版）====================
 class CppExecutor {
     constructor(code, input) {
         this.code = code;
@@ -985,7 +972,11 @@ function userLogin() {
         return;
     }
     
-    tip.innerText = '账号或密码错误！';
+    let studentHint = '';
+    if (globalData.studentList.length > 0) {
+        studentHint = '可用学生账号：' + globalData.studentList.map(s => s.acc).join(', ');
+    }
+    tip.innerText = '账号或密码错误！\n教师账号：admin/123456\n' + studentHint;
 }
 
 function userLogout() {
