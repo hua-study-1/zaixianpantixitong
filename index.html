@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>C++在线判题系统 | 自动同步版</title>
+    <title>C++在线判题系统 | 云同步稳定版</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: system-ui, 'Segoe UI', 'Microsoft YaHei', sans-serif; }
         body { background: linear-gradient(135deg, #1a1a2e, #16213e, #0f0f23); min-height: 100vh; padding: 20px; }
@@ -77,6 +77,8 @@
         .status-dot.online { background: #48bb78; box-shadow: 0 0 8px #48bb78; }
         .status-dot.offline { background: #f56565; box-shadow: 0 0 8px #f56565; }
         .sync-label { font-weight: 600; margin-right: 5px; }
+        .login-loading { display: none; text-align: center; padding: 15px; background: rgba(102,126,234,0.15); border-radius: 10px; margin: 10px 0; color: #667eea; }
+        .login-loading .spinner { display: inline-block; width: 20px; height: 20px; border: 3px solid #e2e8f0; border-top: 3px solid #667eea; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 10px; }
         .login-tip-box { background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; padding: 8px 12px; margin: 10px 0; font-size: 13px; color: #856404; display: none; }
     </style>
 </head>
@@ -88,16 +90,21 @@
         <h2 style="margin-bottom:25px;">🔧 C++ 在线判题系统</h2>
         <p style="color:#718096;font-size:14px;margin-bottom:10px;">💡 教师配置云同步后，学生账号自动跨设备可用</p>
         <div id="syncStatusLogin" style="font-size:12px;color:#667eea;margin-bottom:10px;"></div>
+        
+        <!-- 登录加载提示 -->
+        <div id="loginLoading" class="login-loading">
+            <span class="spinner"></span> 正在同步云端数据，请稍候...
+        </div>
+        
         <input type="text" id="loginAcc" placeholder="账号">
         <input type="password" id="loginPwd" placeholder="密码">
         <div id="loginTip" style="color:#f56565;margin:10px 0;"></div>
-        <div id="loginLoading" style="display:none;color:#667eea;margin:10px 0;">⏳ 正在同步云端数据...</div>
-        <button class="btn btn-primary" style="width:100%;" onclick="userLogin()">登录系统</button>
+        <button class="btn btn-primary" style="width:100%;" onclick="userLogin()" id="loginBtn">登录系统</button>
         <div style="margin-top:15px;padding:12px;background:#f0f0f0;border-radius:10px;font-size:13px;">
             📌 教师：admin / 123456 &nbsp;|&nbsp; 学生：zhangsan/123456
         </div>
         <div style="margin-top:10px;font-size:12px;color:#718096;">
-            💡 如果学生登录失败，请先让教师登录一次同步数据
+            💡 新设备首次登录，请先让教师登录一次同步数据
         </div>
     </div>
 </div>
@@ -289,32 +296,31 @@ function updateCloudStatus() {
     }
 }
 
-async function checkCloudHasData() {
-    if (!CLOUD.binId || !CLOUD.apiKey) return false;
+// 从云端同步数据（同步完成后返回数据）
+async function syncFromCloud() {
+    if (!CLOUD.binId || !CLOUD.apiKey) return null;
     try {
         let res = await fetch('https://api.jsonbin.io/v3/b/' + CLOUD.binId + '/latest', {
             headers: { 'X-Master-Key': CLOUD.apiKey }
         });
-        return res.ok;
-    } catch(e) { return false; }
+        if (!res.ok) return null;
+        let result = await res.json();
+        return result.record;
+    } catch(e) { 
+        console.error('同步失败:', e);
+        return null;
+    }
 }
 
-async function autoSyncFromCloud() {
-    if (!CLOUD.binId || !CLOUD.apiKey) return false;
-    try {
-        let res = await fetch('https://api.jsonbin.io/v3/b/' + CLOUD.binId + '/latest', {
-            headers: { 'X-Master-Key': CLOUD.apiKey }
-        });
-        if (!res.ok) return false;
-        let result = await res.json();
-        let data = result.record;
-        if (data.problemList) globalData.problemList = data.problemList;
-        if (data.studentList) globalData.studentList = data.studentList;
-        if (data.submitRecords) globalData.submitRecords = data.submitRecords;
-        if (data.classList) globalData.classList = data.classList;
-        saveDataLocal();
-        return true;
-    } catch(e) { return false; }
+// 将云端数据应用到本地
+function applyCloudData(cloudData) {
+    if (!cloudData) return false;
+    if (cloudData.problemList) globalData.problemList = cloudData.problemList;
+    if (cloudData.studentList) globalData.studentList = cloudData.studentList;
+    if (cloudData.submitRecords) globalData.submitRecords = cloudData.submitRecords;
+    if (cloudData.classList) globalData.classList = cloudData.classList;
+    saveDataLocal();
+    return true;
 }
 
 async function createCloudBin() {
@@ -357,16 +363,8 @@ function connectCloud() {
     localStorage.setItem('cloud_api_key', apiKey);
     updateCloudStatus();
     showToast('✅ 已连接云端');
-    autoSyncFromCloud().then(success => {
-        if (success) {
-            showToast('✅ 已自动同步云端数据');
-            if (globalData.role === 'teacher') {
-                renderTeacherProblemList(); renderSubmitRecords(); renderClassList(); renderAdminStudentTable(); renderAdminProblemTable();
-            } else {
-                renderStudentProblemList();
-            }
-        }
-    });
+    // 连接后自动下载
+    downloadFromCloud();
 }
 
 async function uploadToCloud() {
@@ -399,8 +397,9 @@ async function uploadToCloud() {
 async function downloadFromCloud() {
     if (!CLOUD.binId || !CLOUD.apiKey) { showToast('❌ 请先连接云端'); return; }
     showToast('⏳ 下载中...');
-    let success = await autoSyncFromCloud();
-    if (success) {
+    let cloudData = await syncFromCloud();
+    if (cloudData) {
+        applyCloudData(cloudData);
         showToast('✅ 数据已从云端下载');
         if (globalData.role === 'teacher') {
             renderTeacherProblemList(); renderSubmitRecords(); renderClassList(); renderAdminStudentTable(); renderAdminProblemTable();
@@ -422,6 +421,7 @@ let globalData = {
 function generateClassCode() { return Math.random().toString(36).substring(2, 8).toUpperCase(); }
 
 function initData() {
+    // 先从本地加载
     let saved = localStorage.getItem('oj_system_data');
     if (saved) {
         try {
@@ -432,6 +432,7 @@ function initData() {
             globalData.classList = data.classList || [];
         } catch(e) {}
     }
+    // 如果没有数据，创建默认
     if (globalData.problemList.length === 0) {
         globalData.problemList = [
             { id: 1, title: "Hello World", desc: "输出 Hello World", difficulty: "easy", testPoint: [{ input: "", output: "Hello World", score: 100 }] },
@@ -462,7 +463,7 @@ function saveDataLocal() {
     }));
 }
 
-// 保存数据并自动上传云端（不显示上传提示，静默同步）
+// 保存并自动上传（静默同步）
 function saveDataAndSync() {
     saveDataLocal();
     if (CLOUD.binId && CLOUD.apiKey && !CLOUD.isSyncing) {
@@ -497,29 +498,36 @@ function showToast(msg) {
     setTimeout(() => t.remove(), 3000);
 }
 
-// ==================== 登录函数（修复：学生登录前先同步云端） ====================
-function userLogin() {
+// ==================== 登录函数（核心修复） ====================
+async function userLogin() {
     let acc = document.getElementById('loginAcc').value.trim();
     let pwd = document.getElementById('loginPwd').value.trim();
     let tip = document.getElementById('loginTip');
     let loading = document.getElementById('loginLoading');
+    let loginBtn = document.getElementById('loginBtn');
     
     tip.innerText = '';
+    loginBtn.disabled = true;
+    loginBtn.innerText = '登录中...';
     
-    // 如果已连接云端，先同步数据再登录
+    // 如果已连接云端，先同步数据
     if (CLOUD.binId && CLOUD.apiKey) {
         loading.style.display = 'block';
-        autoSyncFromCloud().then(success => {
-            loading.style.display = 'none';
-            if (success) {
-                showToast('✅ 已同步云端数据');
-            }
-            // 执行登录验证
-            doLogin(acc, pwd);
-        });
-    } else {
-        doLogin(acc, pwd);
+        let cloudData = await syncFromCloud();
+        if (cloudData) {
+            applyCloudData(cloudData);
+            console.log('✅ 云端数据同步成功，学生列表:', globalData.studentList);
+        } else {
+            console.log('⚠️ 云端同步失败，使用本地数据');
+        }
+        loading.style.display = 'none';
     }
+    
+    loginBtn.disabled = false;
+    loginBtn.innerText = '登录系统';
+    
+    // 执行登录验证
+    doLogin(acc, pwd);
 }
 
 function doLogin(acc, pwd) {
@@ -552,15 +560,16 @@ function doLogin(acc, pwd) {
         return;
     }
     
-    // 如果学生不存在，提示用户先让教师登录同步数据
+    // 提示错误
     if (CLOUD.binId && CLOUD.apiKey) {
-        tip.innerText = '❌ 账号或密码错误。提示：如果这是新设备，请先让教师登录一次同步学生数据！';
+        let studentNames = globalData.studentList.map(s => s.acc).join(', ');
+        tip.innerText = '❌ 账号或密码错误。当前云端的可用学生账号: ' + (studentNames || '无');
     } else {
         tip.innerText = '❌ 账号或密码错误，请重新输入';
     }
 }
 
-// ==================== 判题系统核心函数（精简） ====================
+// ==================== 判题系统核心函数 ====================
 function getStudentBestScore(userName, probName) {
     let userSubmits = globalData.submitRecords.filter(r => r.userName === userName && r.probName === probName);
     if (userSubmits.length === 0) return 0;
@@ -659,11 +668,11 @@ function saveRecord(probName, score, full, code, error) {
         userClassId: globalData.userInfo?.classId, probName: probName,
         score: score, full: full, code: code, error: error, time: Date.now()
     });
-    saveDataAndSync(); // 保存并自动同步云端
+    saveDataAndSync();
     if (globalData.role === 'teacher') renderSubmitRecords();
 }
 
-// ==================== 班级管理（精简版） ====================
+// ==================== 班级管理（精简） ====================
 function renderClassList() {
     let container = document.getElementById('classListContainer');
     if (!container) return;
@@ -968,14 +977,11 @@ function refreshTeacherRecords() {
     let btn = document.getElementById('teacherRefreshBtn');
     btn.classList.add('refresh-btn');
     if (CLOUD.binId && CLOUD.apiKey) {
-        autoSyncFromCloud().then(success => {
-            if (success) showToast('✅ 已同步云端数据');
-            renderSubmitRecords();
-        });
+        downloadFromCloud();
     } else {
         renderSubmitRecords();
+        showToast('✅ 提交记录已刷新');
     }
-    showToast('✅ 提交记录已刷新');
     setTimeout(() => btn.classList.remove('refresh-btn'), 500);
 }
 
@@ -983,14 +989,11 @@ function refreshStudentProblems() {
     let btn = document.getElementById('studentRefreshBtn');
     btn.classList.add('refresh-btn');
     if (CLOUD.binId && CLOUD.apiKey) {
-        autoSyncFromCloud().then(success => {
-            if (success) showToast('✅ 已同步云端题目');
-            renderStudentProblemList();
-        });
+        downloadFromCloud();
     } else {
         renderStudentProblemList();
+        showToast('✅ 题目列表已刷新');
     }
-    showToast('✅ 题目列表已刷新');
     setTimeout(() => btn.classList.remove('refresh-btn'), 500);
 }
 
