@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>C++在线判题系统 | 云同步稳定版</title>
+    <title>C++在线判题系统</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: system-ui, 'Segoe UI', 'Microsoft YaHei', sans-serif; }
         body { background: linear-gradient(135deg, #1a1a2e, #16213e, #0f0f23); min-height: 100vh; padding: 20px; }
@@ -61,15 +61,7 @@
             gap: 12px;
             border: 1px solid rgba(102,126,234,0.3);
         }
-        .sync-panel input { 
-            background: rgba(255,255,255,0.12); 
-            border: 1px solid rgba(255,255,255,0.2); 
-            color: #fff; 
-            width: 180px; 
-            margin: 0; 
-            padding: 8px 12px;
-            border-radius: 8px;
-        }
+        .sync-panel input { background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2); color: #fff; width: 180px; margin: 0; padding: 8px 12px; border-radius: 8px; }
         .sync-panel input::placeholder { color: rgba(255,255,255,0.5); }
         .sync-panel input:focus { border-color: #667eea; background: rgba(255,255,255,0.2); }
         .sync-status { font-size: 13px; display: flex; align-items: center; gap: 8px; }
@@ -79,7 +71,8 @@
         .sync-label { font-weight: 600; margin-right: 5px; }
         .login-loading { display: none; text-align: center; padding: 15px; background: rgba(102,126,234,0.15); border-radius: 10px; margin: 10px 0; color: #667eea; }
         .login-loading .spinner { display: inline-block; width: 20px; height: 20px; border: 3px solid #e2e8f0; border-top: 3px solid #667eea; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 10px; }
-        .login-tip-box { background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; padding: 8px 12px; margin: 10px 0; font-size: 13px; color: #856404; display: none; }
+        .auto-sync-tip { font-size: 12px; color: #48bb78; text-align: center; margin-top: 5px; }
+        .cloud-status-bar { background: rgba(255,255,255,0.08); border-radius: 8px; padding: 6px 12px; font-size: 12px; color: #aaa; text-align: center; margin-bottom: 10px; }
     </style>
 </head>
 <body>
@@ -87,25 +80,25 @@
 <!-- 登录页 -->
 <div id="loginPage" class="container">
     <div class="card" style="max-width:450px;margin:80px auto;text-align:center;">
-        <h2 style="margin-bottom:25px;">🔧 C++ 在线判题系统</h2>
-        <p style="color:#718096;font-size:14px;margin-bottom:10px;">💡 教师配置云同步后，学生账号自动跨设备可用</p>
-        <div id="syncStatusLogin" style="font-size:12px;color:#667eea;margin-bottom:10px;"></div>
+        <h2 style="margin-bottom:15px;">🔧 C++ 在线判题系统</h2>
+        <p style="color:#718096;font-size:13px;">💡 配置云同步后，学生账号自动跨设备可用</p>
         
-        <!-- 登录加载提示 -->
-        <div id="loginLoading" class="login-loading">
-            <span class="spinner"></span> 正在同步云端数据，请稍候...
-        </div>
+        <!-- 云端状态条 -->
+        <div class="cloud-status-bar" id="cloudStatusBar">☁️ 正在连接云端...</div>
+        
+        <div id="syncStatusLogin" style="font-size:12px;color:#667eea;margin:8px 0;"></div>
+        <div id="syncLoadingTip" class="auto-sync-tip" style="display:none;">⏳ 正在同步云端数据...</div>
+        
+        <div id="loginLoading" class="login-loading"><span class="spinner"></span> 正在同步云端数据，请稍候...</div>
         
         <input type="text" id="loginAcc" placeholder="账号">
         <input type="password" id="loginPwd" placeholder="密码">
-        <div id="loginTip" style="color:#f56565;margin:10px 0;"></div>
+        <div id="loginTip" style="color:#f56565;margin:10px 0;font-size:13px;"></div>
         <button class="btn btn-primary" style="width:100%;" onclick="userLogin()" id="loginBtn">登录系统</button>
         <div style="margin-top:15px;padding:12px;background:#f0f0f0;border-radius:10px;font-size:13px;">
             📌 教师：admin / 123456 &nbsp;|&nbsp; 学生：zhangsan/123456
         </div>
-        <div style="margin-top:10px;font-size:12px;color:#718096;">
-            💡 新设备首次登录，请先让教师登录一次同步数据
-        </div>
+        <div style="margin-top:8px;font-size:12px;color:#718096;" id="studentHint">⏳ 正在加载学生列表...</div>
     </div>
 </div>
 
@@ -122,8 +115,6 @@
                 <button class="btn btn-danger" onclick="userLogout()">🚪 退出</button>
             </div>
         </div>
-
-        <!-- 云同步面板 -->
         <div class="sync-panel">
             <span class="sync-label">☁️ 云同步</span>
             <span class="status-dot offline" id="syncDot"></span>
@@ -136,18 +127,15 @@
             <button class="btn btn-warning" onclick="createCloudBin()">🆕 创建</button>
             <span style="font-size:12px;color:#aaa;margin-left:5px;" id="syncAutoHint">⚠️ 配置后自动同步</span>
         </div>
-
         <div class="search-box">
             <input type="text" id="teacherSearchInput" placeholder="🔍 搜索题目..." oninput="renderTeacherProblemList()">
         </div>
         <div id="teacherProblemsPanel"></div>
         <div id="teacherRecordsPanel" class="hide">
-            <div style="overflow-x:auto;">
-                <table id="teacherSubmitTable">
-                    <thead><tr><th>学生</th><th>班级</th><th>题目</th><th>得分</th><th>时间</th><th>详情</th></tr></thead>
-                    <tbody></tbody>
-                </table>
-            </div>
+            <div style="overflow-x:auto;"><table id="teacherSubmitTable">
+                <thead><tr><th>学生</th><th>班级</th><th>题目</th><th>得分</th><th>时间</th><th>详情</th></tr></thead>
+                <tbody></tbody>
+            </table></div>
         </div>
     </div>
 </div>
@@ -164,7 +152,6 @@
             <button class="btn btn-success" onclick="switchAdminTab('problem')">📝 题目管理</button>
             <button class="btn btn-info" onclick="switchAdminTab('class')">🏫 班级管理</button>
         </div>
-
         <div id="adminStudentPanel">
             <button class="btn btn-success" onclick="openAddStudentModal()">➕ 添加学生</button>
             <div style="overflow-x:auto;"><table id="adminStudentTable"><thead><tr><th>姓名</th><th>账号</th><th>密码</th><th>班级</th><th>操作</th></tr></thead><tbody></tbody></table></div>
@@ -236,7 +223,7 @@
     </div>
 </div>
 
-<!-- 模态框（精简） -->
+<!-- 模态框 -->
 <div id="addStudentModal" class="hide modal-mask"><div class="card" style="width:450px;"><h4>➕ 添加学生</h4>
     <input id="addStuName" placeholder="姓名"><input id="addStuAcc" placeholder="账号"><input id="addStuPwd" placeholder="密码" value="123456"><select id="addStuClassId"></select>
     <div style="display:flex;gap:10px;margin-top:15px;"><button class="btn btn-success" onclick="saveNewStudent()">保存</button><button class="btn btn-outline" onclick="closeAddStudentModal()">取消</button></div>
@@ -276,9 +263,11 @@
 // ==================== 云同步 ====================
 let CLOUD = {
     binId: localStorage.getItem('cloud_bin_id') || '',
-    apiKey: localStorage.getItem('cloud_api_key') || '',
-    isSyncing: false
+    apiKey: localStorage.getItem('cloud_api_key') || ''
 };
+
+// 页面加载时自动同步标志
+let isCloudSynced = false;
 
 function updateCloudStatus() {
     let dot = document.getElementById('syncDot');
@@ -287,16 +276,17 @@ function updateCloudStatus() {
         dot.className = 'status-dot online';
         status.innerText = '已连接: ' + CLOUD.binId.substring(0, 8) + '...';
         document.getElementById('syncAutoHint').innerHTML = '✅ 已开启自动同步';
-        document.getElementById('syncStatusLogin').innerHTML = '☁️ 云端已连接，数据可跨设备同步';
+        document.getElementById('syncStatusLogin').innerHTML = '☁️ 云端已连接';
+        document.getElementById('cloudStatusBar').innerHTML = '☁️ 云端已连接，数据自动同步';
     } else {
         dot.className = 'status-dot offline';
         status.innerText = '未连接';
         document.getElementById('syncAutoHint').innerHTML = '⚠️ 配置后自动同步';
-        document.getElementById('syncStatusLogin').innerHTML = '⚠️ 未连接云端，数据仅保存在本地';
+        document.getElementById('syncStatusLogin').innerHTML = '⚠️ 未连接云端';
+        document.getElementById('cloudStatusBar').innerHTML = '⚠️ 未连接云端，数据仅保存在本地';
     }
 }
 
-// 从云端同步数据（同步完成后返回数据）
 async function syncFromCloud() {
     if (!CLOUD.binId || !CLOUD.apiKey) return null;
     try {
@@ -312,7 +302,6 @@ async function syncFromCloud() {
     }
 }
 
-// 将云端数据应用到本地
 function applyCloudData(cloudData) {
     if (!cloudData) return false;
     if (cloudData.problemList) globalData.problemList = cloudData.problemList;
@@ -320,6 +309,7 @@ function applyCloudData(cloudData) {
     if (cloudData.submitRecords) globalData.submitRecords = cloudData.submitRecords;
     if (cloudData.classList) globalData.classList = cloudData.classList;
     saveDataLocal();
+    isCloudSynced = true;
     return true;
 }
 
@@ -369,8 +359,6 @@ function connectCloud() {
 
 async function uploadToCloud() {
     if (!CLOUD.binId || !CLOUD.apiKey) { showToast('❌ 请先连接云端'); return; }
-    if (CLOUD.isSyncing) return;
-    CLOUD.isSyncing = true;
     showToast('⏳ 上传中...');
     try {
         let data = {
@@ -388,10 +376,8 @@ async function uploadToCloud() {
         });
         if (!res.ok) throw new Error('上传失败');
         showToast('✅ 上传成功');
-    } catch(e) {
-        showToast('❌ ' + e.message);
-    }
-    CLOUD.isSyncing = false;
+        document.getElementById('cloudStatusBar').innerHTML = '☁️ 数据已同步到云端';
+    } catch(e) { showToast('❌ ' + e.message); }
 }
 
 async function downloadFromCloud() {
@@ -401,6 +387,7 @@ async function downloadFromCloud() {
     if (cloudData) {
         applyCloudData(cloudData);
         showToast('✅ 数据已从云端下载');
+        document.getElementById('cloudStatusBar').innerHTML = '☁️ 数据已从云端同步';
         if (globalData.role === 'teacher') {
             renderTeacherProblemList(); renderSubmitRecords(); renderClassList(); renderAdminStudentTable(); renderAdminProblemTable();
         } else {
@@ -408,6 +395,39 @@ async function downloadFromCloud() {
         }
     } else {
         showToast('❌ 下载失败');
+    }
+}
+
+// ==================== 页面加载自动同步 ====================
+async function autoSyncOnPageLoad() {
+    // 如果已配置云端，自动同步
+    if (CLOUD.binId && CLOUD.apiKey) {
+        let tip = document.getElementById('syncLoadingTip');
+        tip.style.display = 'block';
+        let cloudData = await syncFromCloud();
+        if (cloudData) {
+            applyCloudData(cloudData);
+            console.log('✅ 页面加载自动同步成功，学生数:', globalData.studentList.length);
+            tip.textContent = '✅ 云端数据同步完成！';
+            tip.style.color = '#48bb78';
+            document.getElementById('cloudStatusBar').innerHTML = '☁️ 数据已同步，可直接登录';
+        } else {
+            console.log('⚠️ 自动同步失败');
+            tip.textContent = '⚠️ 云端同步失败，使用本地数据';
+            tip.style.color = '#f56565';
+        }
+        setTimeout(() => { tip.style.display = 'none'; }, 3000);
+    }
+    // 更新学生列表提示
+    updateStudentHint();
+}
+
+function updateStudentHint() {
+    let hint = document.getElementById('studentHint');
+    if (globalData.studentList.length > 0) {
+        hint.innerHTML = '📚 当前可用学生账号: ' + globalData.studentList.map(s => s.acc).join(', ');
+    } else {
+        hint.innerHTML = '📚 暂无学生账号，请教师登录创建';
     }
 }
 
@@ -421,7 +441,6 @@ let globalData = {
 function generateClassCode() { return Math.random().toString(36).substring(2, 8).toUpperCase(); }
 
 function initData() {
-    // 先从本地加载
     let saved = localStorage.getItem('oj_system_data');
     if (saved) {
         try {
@@ -432,7 +451,6 @@ function initData() {
             globalData.classList = data.classList || [];
         } catch(e) {}
     }
-    // 如果没有数据，创建默认
     if (globalData.problemList.length === 0) {
         globalData.problemList = [
             { id: 1, title: "Hello World", desc: "输出 Hello World", difficulty: "easy", testPoint: [{ input: "", output: "Hello World", score: 100 }] },
@@ -452,6 +470,8 @@ function initData() {
         globalData.studentList = [{ name: "张三", acc: "zhangsan", pwd: "123456", classId: 1 }];
     }
     saveDataLocal();
+    // 页面加载后自动同步云端
+    autoSyncOnPageLoad();
 }
 
 function saveDataLocal() {
@@ -463,11 +483,9 @@ function saveDataLocal() {
     }));
 }
 
-// 保存并自动上传（静默同步）
 function saveDataAndSync() {
     saveDataLocal();
-    if (CLOUD.binId && CLOUD.apiKey && !CLOUD.isSyncing) {
-        CLOUD.isSyncing = true;
+    if (CLOUD.binId && CLOUD.apiKey) {
         let data = {
             problemList: globalData.problemList,
             studentList: globalData.studentList,
@@ -480,7 +498,7 @@ function saveDataAndSync() {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', 'X-Master-Key': CLOUD.apiKey },
             body: JSON.stringify(data)
-        }).catch(e => console.error('自动同步失败:', e)).finally(() => { CLOUD.isSyncing = false; });
+        }).catch(e => console.error('自动同步失败:', e));
     }
 }
 
@@ -498,7 +516,7 @@ function showToast(msg) {
     setTimeout(() => t.remove(), 3000);
 }
 
-// ==================== 登录函数（核心修复） ====================
+// ==================== 登录函数 ====================
 async function userLogin() {
     let acc = document.getElementById('loginAcc').value.trim();
     let pwd = document.getElementById('loginPwd').value.trim();
@@ -510,15 +528,14 @@ async function userLogin() {
     loginBtn.disabled = true;
     loginBtn.innerText = '登录中...';
     
-    // 如果已连接云端，先同步数据
+    // 每次登录前强制同步一次（确保最新数据）
     if (CLOUD.binId && CLOUD.apiKey) {
         loading.style.display = 'block';
         let cloudData = await syncFromCloud();
         if (cloudData) {
             applyCloudData(cloudData);
-            console.log('✅ 云端数据同步成功，学生列表:', globalData.studentList);
-        } else {
-            console.log('⚠️ 云端同步失败，使用本地数据');
+            console.log('✅ 登录同步成功');
+            updateStudentHint();
         }
         loading.style.display = 'none';
     }
@@ -526,24 +543,13 @@ async function userLogin() {
     loginBtn.disabled = false;
     loginBtn.innerText = '登录系统';
     
-    // 执行登录验证
-    doLogin(acc, pwd);
-}
-
-function doLogin(acc, pwd) {
-    let tip = document.getElementById('loginTip');
-    
     // 教师登录
     if (acc === 'admin' && pwd === '123456') {
         globalData.role = 'teacher';
         globalData.userInfo = { name: '教师' };
         hideAllPages();
         document.getElementById('teacherMainPage').classList.remove('hide');
-        renderTeacherProblemList();
-        renderSubmitRecords();
-        renderClassList();
-        renderAdminStudentTable();
-        renderAdminProblemTable();
+        renderTeacherProblemList(); renderSubmitRecords(); renderClassList(); renderAdminStudentTable(); renderAdminProblemTable();
         showToast('👨‍🏫 欢迎教师');
         return;
     }
@@ -560,16 +566,16 @@ function doLogin(acc, pwd) {
         return;
     }
     
-    // 提示错误
-    if (CLOUD.binId && CLOUD.apiKey) {
-        let studentNames = globalData.studentList.map(s => s.acc).join(', ');
-        tip.innerText = '❌ 账号或密码错误。当前云端的可用学生账号: ' + (studentNames || '无');
+    // 提示错误 - 显示当前有哪些学生
+    if (globalData.studentList.length > 0) {
+        let studentNames = globalData.studentList.map(s => s.acc).join(' | ');
+        tip.innerText = '❌ 账号或密码错误。\n当前可用账号: ' + studentNames;
     } else {
-        tip.innerText = '❌ 账号或密码错误，请重新输入';
+        tip.innerText = '❌ 暂无学生账号，请教师登录创建';
     }
 }
 
-// ==================== 判题系统核心函数 ====================
+// ==================== 判题系统核心函数（精简） ====================
 function getStudentBestScore(userName, probName) {
     let userSubmits = globalData.submitRecords.filter(r => r.userName === userName && r.probName === probName);
     if (userSubmits.length === 0) return 0;
@@ -672,7 +678,7 @@ function saveRecord(probName, score, full, code, error) {
     if (globalData.role === 'teacher') renderSubmitRecords();
 }
 
-// ==================== 班级管理（精简） ====================
+// ==================== 班级管理 ====================
 function renderClassList() {
     let container = document.getElementById('classListContainer');
     if (!container) return;
@@ -1229,9 +1235,13 @@ if (localStorage.getItem('cloud_bin_id')) {
 }
 updateCloudStatus();
 
+// 初始化数据（包含自动同步）
 initData();
+
 hideAllPages();
 document.getElementById('loginPage').classList.remove('hide');
+
+console.log('✅ 系统已启动，自动同步已开启');
 </script>
 </body>
 </html>
