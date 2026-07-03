@@ -81,16 +81,11 @@
 <div id="loginPage" class="container">
     <div class="card" style="max-width:450px;margin:80px auto;text-align:center;">
         <h2 style="margin-bottom:15px;">🔧 C++ 在线判题系统</h2>
-        <p style="color:#718096;font-size:13px;">💡 配置云同步后，学生账号自动跨设备可用</p>
-        
-        <!-- 云端状态条 -->
+        <p style="color:#718096;font-size:13px;">💡 配置云同步后，数据自动跨设备同步</p>
         <div class="cloud-status-bar" id="cloudStatusBar">☁️ 正在连接云端...</div>
-        
         <div id="syncStatusLogin" style="font-size:12px;color:#667eea;margin:8px 0;"></div>
         <div id="syncLoadingTip" class="auto-sync-tip" style="display:none;">⏳ 正在同步云端数据...</div>
-        
         <div id="loginLoading" class="login-loading"><span class="spinner"></span> 正在同步云端数据，请稍候...</div>
-        
         <input type="text" id="loginAcc" placeholder="账号">
         <input type="password" id="loginPwd" placeholder="密码">
         <div id="loginTip" style="color:#f56565;margin:10px 0;font-size:13px;"></div>
@@ -122,10 +117,10 @@
             <input type="text" id="jsonBinId" placeholder="Bin ID" style="width:160px;">
             <input type="password" id="jsonApiKey" placeholder="API Key" style="width:180px;">
             <button class="btn btn-primary" onclick="connectCloud()">🔗 连接</button>
-            <button class="btn btn-success" onclick="uploadToCloud()">☁️ 上传</button>
+            <button class="btn btn-success" onclick="manualUpload()">☁️ 手动上传</button>
             <button class="btn btn-info" onclick="downloadFromCloud()">📥 下载</button>
             <button class="btn btn-warning" onclick="createCloudBin()">🆕 创建</button>
-            <span style="font-size:12px;color:#aaa;margin-left:5px;" id="syncAutoHint">⚠️ 配置后自动同步</span>
+            <span style="font-size:12px;color:#48bb78;margin-left:5px;" id="syncAutoHint">✅ 已开启自动同步</span>
         </div>
         <div class="search-box">
             <input type="text" id="teacherSearchInput" placeholder="🔍 搜索题目..." oninput="renderTeacherProblemList()">
@@ -260,14 +255,13 @@
 </div></div>
 
 <script>
-// ==================== 云同步 ====================
+// ==================== 云同步（核心：自动上传） ====================
 let CLOUD = {
     binId: localStorage.getItem('cloud_bin_id') || '',
-    apiKey: localStorage.getItem('cloud_api_key') || ''
+    apiKey: localStorage.getItem('cloud_api_key') || '',
+    isSyncing: false,
+    hasData: false
 };
-
-// 页面加载时自动同步标志
-let isCloudSynced = false;
 
 function updateCloudStatus() {
     let dot = document.getElementById('syncDot');
@@ -309,7 +303,6 @@ function applyCloudData(cloudData) {
     if (cloudData.submitRecords) globalData.submitRecords = cloudData.submitRecords;
     if (cloudData.classList) globalData.classList = cloudData.classList;
     saveDataLocal();
-    isCloudSynced = true;
     return true;
 }
 
@@ -340,6 +333,8 @@ async function createCloudBin() {
         document.getElementById('jsonApiKey').value = CLOUD.apiKey;
         updateCloudStatus();
         showToast('✅ 云端创建成功！Bin ID: ' + CLOUD.binId);
+        // 创建后自动上传
+        await autoUploadToCloud();
     } catch(e) { showToast('❌ ' + e.message); }
 }
 
@@ -357,9 +352,11 @@ function connectCloud() {
     downloadFromCloud();
 }
 
-async function uploadToCloud() {
-    if (!CLOUD.binId || !CLOUD.apiKey) { showToast('❌ 请先连接云端'); return; }
-    showToast('⏳ 上传中...');
+// 自动上传到云端（静默执行）
+async function autoUploadToCloud() {
+    if (!CLOUD.binId || !CLOUD.apiKey) return false;
+    if (CLOUD.isSyncing) return false;
+    CLOUD.isSyncing = true;
     try {
         let data = {
             problemList: globalData.problemList,
@@ -374,10 +371,30 @@ async function uploadToCloud() {
             headers: { 'Content-Type': 'application/json', 'X-Master-Key': CLOUD.apiKey },
             body: JSON.stringify(data)
         });
-        if (!res.ok) throw new Error('上传失败');
+        if (res.ok) {
+            CLOUD.hasData = true;
+            console.log('✅ 自动上传成功');
+            return true;
+        }
+        return false;
+    } catch(e) {
+        console.error('自动上传失败:', e);
+        return false;
+    } finally {
+        CLOUD.isSyncing = false;
+    }
+}
+
+// 手动上传（带提示）
+async function manualUpload() {
+    if (!CLOUD.binId || !CLOUD.apiKey) { showToast('❌ 请先连接云端'); return; }
+    showToast('⏳ 上传中...');
+    let success = await autoUploadToCloud();
+    if (success) {
         showToast('✅ 上传成功');
-        document.getElementById('cloudStatusBar').innerHTML = '☁️ 数据已同步到云端';
-    } catch(e) { showToast('❌ ' + e.message); }
+    } else {
+        showToast('❌ 上传失败');
+    }
 }
 
 async function downloadFromCloud() {
@@ -400,7 +417,6 @@ async function downloadFromCloud() {
 
 // ==================== 页面加载自动同步 ====================
 async function autoSyncOnPageLoad() {
-    // 如果已配置云端，自动同步
     if (CLOUD.binId && CLOUD.apiKey) {
         let tip = document.getElementById('syncLoadingTip');
         tip.style.display = 'block';
@@ -418,7 +434,6 @@ async function autoSyncOnPageLoad() {
         }
         setTimeout(() => { tip.style.display = 'none'; }, 3000);
     }
-    // 更新学生列表提示
     updateStudentHint();
 }
 
@@ -431,7 +446,7 @@ function updateStudentHint() {
     }
 }
 
-// ==================== 数据存储 ====================
+// ==================== 数据存储（核心：每次保存自动上传） ====================
 let globalData = {
     role: null, userInfo: null, problemList: [], studentList: [], submitRecords: [],
     classList: [], currentProblem: null, currentClass: null,
@@ -483,22 +498,14 @@ function saveDataLocal() {
     }));
 }
 
+// ⭐ 核心函数：保存数据并自动上传云端
 function saveDataAndSync() {
+    // 1. 保存到本地
     saveDataLocal();
+    // 2. 自动上传到云端（静默执行）
     if (CLOUD.binId && CLOUD.apiKey) {
-        let data = {
-            problemList: globalData.problemList,
-            studentList: globalData.studentList,
-            submitRecords: globalData.submitRecords,
-            classList: globalData.classList,
-            version: '1.0',
-            lastSync: new Date().toISOString()
-        };
-        fetch('https://api.jsonbin.io/v3/b/' + CLOUD.binId, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json', 'X-Master-Key': CLOUD.apiKey },
-            body: JSON.stringify(data)
-        }).catch(e => console.error('自动同步失败:', e));
+        autoUploadToCloud();
+        console.log('🔄 数据变更，已自动上传云端');
     }
 }
 
@@ -528,7 +535,6 @@ async function userLogin() {
     loginBtn.disabled = true;
     loginBtn.innerText = '登录中...';
     
-    // 每次登录前强制同步一次（确保最新数据）
     if (CLOUD.binId && CLOUD.apiKey) {
         loading.style.display = 'block';
         let cloudData = await syncFromCloud();
@@ -543,7 +549,6 @@ async function userLogin() {
     loginBtn.disabled = false;
     loginBtn.innerText = '登录系统';
     
-    // 教师登录
     if (acc === 'admin' && pwd === '123456') {
         globalData.role = 'teacher';
         globalData.userInfo = { name: '教师' };
@@ -554,7 +559,6 @@ async function userLogin() {
         return;
     }
     
-    // 学生登录
     let stu = globalData.studentList.find(s => s.acc === acc && s.pwd === pwd);
     if (stu) {
         globalData.role = 'student';
@@ -566,7 +570,6 @@ async function userLogin() {
         return;
     }
     
-    // 提示错误 - 显示当前有哪些学生
     if (globalData.studentList.length > 0) {
         let studentNames = globalData.studentList.map(s => s.acc).join(' | ');
         tip.innerText = '❌ 账号或密码错误。\n当前可用账号: ' + studentNames;
@@ -575,7 +578,7 @@ async function userLogin() {
     }
 }
 
-// ==================== 判题系统核心函数（精简） ====================
+// ==================== 判题系统核心函数 ====================
 function getStudentBestScore(userName, probName) {
     let userSubmits = globalData.submitRecords.filter(r => r.userName === userName && r.probName === probName);
     if (userSubmits.length === 0) return 0;
@@ -674,7 +677,7 @@ function saveRecord(probName, score, full, code, error) {
         userClassId: globalData.userInfo?.classId, probName: probName,
         score: score, full: full, code: code, error: error, time: Date.now()
     });
-    saveDataAndSync();
+    saveDataAndSync(); // ⭐ 自动同步
     if (globalData.role === 'teacher') renderSubmitRecords();
 }
 
@@ -1102,7 +1105,7 @@ function saveNewStudent() {
     if (!name || !acc) { alert('请填写完整'); return; }
     if (globalData.studentList.some(s => s.acc === acc)) { alert('账号已存在'); return; }
     globalData.studentList.push({ name, acc, pwd, classId });
-    saveDataAndSync();
+    saveDataAndSync(); // ⭐ 自动同步
     closeAddStudentModal();
     renderAdminStudentTable();
     showToast('✅ 学生添加成功');
@@ -1127,7 +1130,7 @@ function updateStudent() {
     let classId = parseInt(document.getElementById('editStuClassId').value) || null;
     if (!name || !acc) { alert('请填写完整'); return; }
     globalData.studentList[currentEditIdx] = { name, acc, pwd, classId };
-    saveDataAndSync();
+    saveDataAndSync(); // ⭐ 自动同步
     closeEditStudentModal();
     renderAdminStudentTable();
     showToast('✅ 学生信息已更新');
@@ -1136,7 +1139,7 @@ function updateStudent() {
 function deleteStudent(i) {
     if (confirm('确定删除？')) {
         globalData.studentList.splice(i, 1);
-        saveDataAndSync();
+        saveDataAndSync(); // ⭐ 自动同步
         renderAdminStudentTable();
         showToast('✅ 已删除');
     }
@@ -1161,7 +1164,7 @@ function saveNewClass() {
     let desc = document.getElementById('addClassDesc').value.trim();
     if (!name) { alert('请输入班级名称'); return; }
     globalData.classList.push({ id: Date.now(), name: name, desc: desc, code: generateClassCode(), notices: [], homeworks: [], createdAt: Date.now() });
-    saveDataAndSync();
+    saveDataAndSync(); // ⭐ 自动同步
     closeAddClassModal();
     renderClassList();
     updateClassSelects();
@@ -1173,7 +1176,7 @@ function deleteProblemById(id) {
         let idx = globalData.problemList.findIndex(p => p.id === id);
         if (idx !== -1) {
             globalData.problemList.splice(idx, 1);
-            saveDataAndSync();
+            saveDataAndSync(); // ⭐ 自动同步
             renderAdminProblemTable();
             if (globalData.role === 'teacher') renderTeacherProblemList();
             showToast('✅ 题目已删除');
@@ -1209,7 +1212,7 @@ function saveNewProblem() {
     });
     if (tps.length === 0) { alert('请添加测试点'); return; }
     globalData.problemList.push({ id: Date.now(), title: title, desc: desc || '无描述', difficulty: diff, testPoint: tps });
-    saveDataAndSync();
+    saveDataAndSync(); // ⭐ 自动同步
     closeAddProblemModal();
     renderAdminProblemTable();
     if (globalData.role === 'teacher') renderTeacherProblemList();
@@ -1242,6 +1245,7 @@ hideAllPages();
 document.getElementById('loginPage').classList.remove('hide');
 
 console.log('✅ 系统已启动，自动同步已开启');
+console.log('📋 当前学生列表:', globalData.studentList.map(s => s.acc));
 </script>
 </body>
 </html>
